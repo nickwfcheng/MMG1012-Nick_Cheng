@@ -1,0 +1,170 @@
+align <- function(x, y) {
+  seq1_split = rev((strsplit(x, NULL))[[1]])  #Reversing first sequence (3' - 5') & splitting amino acid bases
+  seq2_split = strsplit(y, NULL)[[1]]
+  alignment_scores = matrix(0, ncol = length(seq1_split) + 1, nrow = length(seq2_split) + 1) #Creating alignment matrix
+  dimnames(alignment_scores) = list(c('-', seq2_split), c('-', seq1_split))
+  scoring_df = data.frame(as.numeric(c(0, 0, 0, 0)))
+  rownames(scoring_df) = c('M_i-1,j-1 + S_i,j', 'M_i,j-1 + W', 'M_i-1,j + W', '0') #Creating local scoring
+  colnames(scoring_df) = c('Score')
+  scoring_df1 = data.frame(c('D', 'H', 'V', 'Z')) #For preventing gaps > 1
+  alignment_scores1 = matrix('Z', ncol = length(seq1_split) + 1, nrow = length(seq2_split) + 1) #For preventing gaps > 1
+  
+  for (i in 2:nrow(alignment_scores)) {
+    for (j in 2:ncol(alignment_scores)) {
+      if (colnames(alignment_scores)[j] == 'G' & rownames(alignment_scores)[i] == 'C' | colnames(alignment_scores)[j] == 'C' & rownames(alignment_scores)[i] == 'G') {
+        S = 3
+      } else if (colnames(alignment_scores)[j] == 'A' & rownames(alignment_scores)[i] == 'U' | colnames(alignment_scores)[j] == 'U' & rownames(alignment_scores)[i] == 'A') {
+        S = 2
+      } else if (colnames(alignment_scores)[j] == 'G' & rownames(alignment_scores)[i] == 'U' | colnames(alignment_scores)[j] == 'U' & rownames(alignment_scores)[i] == 'G') {
+        S = 1
+      } else {
+        S = -1
+      }
+      scoring_df[1,1] = alignment_scores[i-1,j-1] + S
+      scoring_df[2,1] = alignment_scores[i,j-1] - 1
+      scoring_df[3,1] = alignment_scores[i-1, j] - 1
+      if (alignment_scores1[i,j-1] == 'H') {
+        alignment_scores1[i,j] = as.character(scoring_df1[which.max(scoring_df[-2,1]),1])
+        alignment_scores[i,j] = max(scoring_df[-2,1])
+      } else if (alignment_scores1[i-1,j] == 'V') {
+        alignment_scores1[i,j] = as.character(scoring_df1[which.max(scoring_df[-3,1]),1])
+        alignment_scores[i,j] = max(scoring_df[-3,1])
+      } else {
+        alignment_scores1[i,j] = as.character(scoring_df1[which.max(scoring_df[,1]),1])
+        alignment_scores[i,j] = max(scoring_df)
+      }
+    }
+  }
+  traceback_df = data.frame(which(alignment_scores == max(alignment_scores)[1], arr.ind = T), row.names = NULL)[1,]
+  tracescore_df = data.frame(as.character(c('i-1, j-1', 'i-1, j', 'i, j-1', 'z')), as.character(c('0', '0', '0', '0')))
+  for (i in 1:length(seq2_split)) {
+    if(alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'D' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] > 0) {
+      traceback_df = rbind(traceback_df, c(traceback_df[i,1] - 1, traceback_df[i,2] - 1))
+    } else if (alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'V' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] > 0) {
+      traceback_df = rbind(traceback_df, c(traceback_df[i,1] - 1, traceback_df[i,2]))
+    } else if (alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'H' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] > 0) {
+      traceback_df = rbind(traceback_df, c(traceback_df[i,1], traceback_df[i,2] - 1))
+    } else if (alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'Z' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] == 0) {
+      break
+    }
+  }
+  traceback_df = cbind(traceback_df, NA, NA)
+  colnames(traceback_df)[c(3,4)] = c('seq2', 'seq1')
+  for (i in 1:(nrow(traceback_df)-1)) {
+    if ((traceback_df[i+1,1] != traceback_df[i,1]) & (traceback_df[i+1,2] != traceback_df[i,2])) {
+      traceback_df[i,3] = rownames(alignment_scores)[traceback_df[i,1]]
+      traceback_df[i,4] = colnames(alignment_scores)[traceback_df[i,2]]      
+    } else if (traceback_df[i+1,1] == traceback_df[i,1]) {
+      traceback_df[i,3] = '-'
+      traceback_df[i,4] = colnames(alignment_scores)[traceback_df[i,2]]
+    } else if (traceback_df[i+1,2] == traceback_df[i,2]) {
+      traceback_df[i,3] = rownames(alignment_scores)[traceback_df[i,1]]
+      traceback_df[i,4] = '-'
+    } else if (i == nrow(traceback_df)) {
+      traceback_df[i,3] = rownames(alignment_scores)[traceback_df[i,1]]
+      traceback_df[i,4] = colnames(alignment_scores)[traceback_df[i,2]]   
+    }
+  }
+  traceback_df[nrow(traceback_df),3] = rownames(alignment_scores)[traceback_df[nrow(traceback_df),1]]
+  traceback_df[nrow(traceback_df),4] = colnames(alignment_scores)[traceback_df[nrow(traceback_df),2]]
+  optimal_alignment = traceback_df[-(nrow(traceback_df)),3:4]
+  optimal_alignment[,3] = ''
+  for (i in 1:nrow(optimal_alignment)) {
+    if(optimal_alignment[i,1] == 'G' & optimal_alignment[i,2] == 'C' | optimal_alignment[i,1] == 'C' & optimal_alignment[i,2] == 'G' | optimal_alignment[i,1] == 'A' & optimal_alignment[i,2] == 'U' | optimal_alignment[i,1] == 'U' & optimal_alignment[i,2] == 'A') {
+      optimal_alignment[i,3] = '|'
+    } else if (optimal_alignment[i,1] == 'G' & optimal_alignment[i,2] == 'U' | optimal_alignment[i,1] == 'U' & optimal_alignment[i,2] == 'G') {
+      optimal_alignment[i,3] = ':'
+    } else {
+      optimal_alignment[i,3] = ' '
+    }
+  }
+  optimal_alignment = optimal_alignment[,c(2,3,1)]
+  optimal_alignment = optimal_alignment[rev(rownames(optimal_alignment)),]
+  optimal_alignment = rbind(c("3' ", '   ', "5' "), optimal_alignment, c(" 5'", '   ', " 3'"))
+  seq1_start = ncol(alignment_scores) + 1 - traceback_df[1, 2]
+  seq1_end = ncol(alignment_scores) + 1 - traceback_df[(nrow(traceback_df)-1), 2]
+  seq2_start = traceback_df[(nrow(traceback_df)-1), 1] -1
+  seq2_end = traceback_df[1, 1] -1
+  
+  if (seq1_end & seq2_start <= 10 | seq1_end & seq2_start >= 10) {
+    optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "   ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
+  } else if (seq1_end > seq2_start) {
+    optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "    ", "    "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
+  } else if (seq2_start > seq1_end) {
+    optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("    ", "    ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
+  }
+  
+  optimal_alignment[,4] = ''
+  optimal_alignment[1,4] = 'Alignment Score:'
+  optimal_alignment[2,4] = as.character(alignment_scores[traceback_df[1,1], traceback_df[1,2]])
+  write.table(t(optimal_alignment), col.names = F, row.names = F, quote = F)
+  if (nrow(data.frame(which(alignment_scores == max(alignment_scores)[1], arr.ind = T), row.names = NULL)) > 1) {
+    for (i in 2:nrow(data.frame(which(alignment_scores == max(alignment_scores)[1], arr.ind = T), row.names = NULL))) {
+      traceback_df = data.frame(which(alignment_scores == max(alignment_scores)[1], arr.ind = T), row.names = NULL)[i,]
+      tracescore_df = data.frame(as.character(c('i-1, j-1', 'i-1, j', 'i, j-1', 'z')), as.character(c('0', '0', '0', '0')))
+      for (i in 1:length(seq2_split)) {
+        if(alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'D' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] > 0) {
+          traceback_df = rbind(traceback_df, c(traceback_df[i,1] - 1, traceback_df[i,2] - 1))
+        } else if (alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'V' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] > 0) {
+          traceback_df = rbind(traceback_df, c(traceback_df[i,1] - 1, traceback_df[i,2]))
+        } else if (alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'H' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] > 0) {
+          traceback_df = rbind(traceback_df, c(traceback_df[i,1], traceback_df[i,2] - 1))
+        } else if (alignment_scores1[traceback_df[i,1],traceback_df[i,2]] == 'Z' & alignment_scores[traceback_df[i,1],traceback_df[i,2]] == 0) {
+          break
+        }
+      }
+      traceback_df = cbind(traceback_df, NA, NA)
+      colnames(traceback_df)[c(3,4)] = c('seq2', 'seq1')
+      for (i in 1:(nrow(traceback_df)-1)) {
+        if ((traceback_df[i+1,1] != traceback_df[i,1]) & (traceback_df[i+1,2] != traceback_df[i,2])) {
+          traceback_df[i,3] = rownames(alignment_scores)[traceback_df[i,1]]
+          traceback_df[i,4] = colnames(alignment_scores)[traceback_df[i,2]]      
+        } else if (traceback_df[i+1,1] == traceback_df[i,1]) {
+          traceback_df[i,3] = '-'
+          traceback_df[i,4] = colnames(alignment_scores)[traceback_df[i,2]]
+        } else if (traceback_df[i+1,2] == traceback_df[i,2]) {
+          traceback_df[i,3] = rownames(alignment_scores)[traceback_df[i,1]]
+          traceback_df[i,4] = '-'
+        } else if (i == nrow(traceback_df)) {
+          traceback_df[i,3] = rownames(alignment_scores)[traceback_df[i,1]]
+          traceback_df[i,4] = colnames(alignment_scores)[traceback_df[i,2]]   
+        }
+      }
+      traceback_df[nrow(traceback_df),3] = rownames(alignment_scores)[traceback_df[nrow(traceback_df),1]]
+      traceback_df[nrow(traceback_df),4] = colnames(alignment_scores)[traceback_df[nrow(traceback_df),2]]
+      optimal_alignment = traceback_df[-(nrow(traceback_df)),3:4]
+      optimal_alignment[,3] = ''
+      for (i in 1:nrow(optimal_alignment)) {
+        if(optimal_alignment[i,1] == 'G' & optimal_alignment[i,2] == 'C' | optimal_alignment[i,1] == 'C' & optimal_alignment[i,2] == 'G' | optimal_alignment[i,1] == 'A' & optimal_alignment[i,2] == 'U' | optimal_alignment[i,1] == 'U' & optimal_alignment[i,2] == 'A') {
+          optimal_alignment[i,3] = '|'
+        } else if (optimal_alignment[i,1] == 'G' & optimal_alignment[i,2] == 'U' | optimal_alignment[i,1] == 'U' & optimal_alignment[i,2] == 'G') {
+          optimal_alignment[i,3] = ':'
+        } else {
+          optimal_alignment[i,3] = ' '
+        }
+      }
+      optimal_alignment = optimal_alignment[,c(2,3,1)]
+      optimal_alignment = optimal_alignment[rev(rownames(optimal_alignment)),]
+      optimal_alignment = rbind(c("3' ", '   ', "5' "), optimal_alignment, c(" 5'", '   ', " 3'"))
+      seq1_start = ncol(alignment_scores) + 1 - traceback_df[1, 2]
+      seq1_end = ncol(alignment_scores) + 1 - traceback_df[(nrow(traceback_df)-1), 2]
+      seq2_start = traceback_df[(nrow(traceback_df)-1), 1] -1
+      seq2_end = traceback_df[1, 1] -1
+      
+      if (seq1_end & seq2_start <= 10 | seq1_end & seq2_start >= 10) {
+        optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "   ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
+      } else if (seq1_end > seq2_start) {
+        optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "    ", "    "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
+      } else if (seq2_start > seq1_end) {
+        optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("    ", "    ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
+      }
+      
+      optimal_alignment[,4] = ''
+      optimal_alignment[1,4] = 'Alignment Score:'
+      optimal_alignment[2,4] = as.character(alignment_scores[traceback_df[1,1], traceback_df[1,2]])
+      write.table(t(optimal_alignment), col.names = F, row.names = F, quote = F)
+    }
+  } else {
+    break
+  }
+}
