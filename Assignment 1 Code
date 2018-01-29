@@ -86,11 +86,11 @@ align <- function(x, y) {
   seq2_start = traceback_df[(nrow(traceback_df)-1), 1] -1
   seq2_end = traceback_df[1, 1] -1
   
-  if (seq1_end & seq2_start <= 10 | seq1_end & seq2_start >= 10) {
+  if (nchar(seq1_end) < 1 & nchar(seq2_start) < 1 | nchar(seq1_end) > 1 & nchar(seq2_start) > 1) {
     optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "   ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
-  } else if (seq1_end > seq2_start) {
+  } else if (nchar(seq1_end) > nchar(seq2_start)) {
     optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "    ", "    "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
-  } else if (seq2_start > seq1_end) {
+  } else if (nchar(seq2_start) > nchar(seq1_end)) {
     optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("    ", "    ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
   }
   
@@ -151,11 +151,11 @@ align <- function(x, y) {
       seq2_start = traceback_df[(nrow(traceback_df)-1), 1] -1
       seq2_end = traceback_df[1, 1] -1
       
-      if (seq1_end & seq2_start <= 10 | seq1_end & seq2_start >= 10) {
+      if (nchar(seq1_end) < 1 & nchar(seq2_start) < 1 | nchar(seq1_end) > 1 & nchar(seq2_start) > 1) {
         optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "   ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
-      } else if (seq1_end > seq2_start) {
+      } else if (nchar(seq1_end) > nchar(seq2_start)) {
         optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("   ", "    ", "    "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
-      } else if (seq2_start > seq1_end) {
+      } else if (nchar(seq2_start) > nchar(seq1_end)) {
         optimal_alignment = rbind(c(as.character(seq1_end), ' ', as.character(seq2_start)), c("    ", "    ", "   "), optimal_alignment, c("   ", "   ", "   "), c(as.character(seq1_start), ' ', as.character(seq2_end)))
       }
       
@@ -164,7 +164,5 @@ align <- function(x, y) {
       optimal_alignment[2,4] = as.character(alignment_scores[traceback_df[1,1], traceback_df[1,2]])
       write.table(t(optimal_alignment), col.names = F, row.names = F, quote = F)
     }
-  } else {
-    break
   }
 }
