@@ -1,0 +1,550 @@
+annealzoops = function(x, tmax = 100) {
+  input = as.vector(as.character(input[,1]))
+  input_array = sapply(input, function(x) strsplit(x, ""), simplify = T)
+  options(warn=-1)
+  for (i in 1:length(input_array)){ #Creating j or numbers corresponding to each base
+    input_array[[i]][input_array[[i]] == "A"] <- 1
+    input_array[[i]][input_array[[i]] == "C"] <- 2
+    input_array[[i]][input_array[[i]] == "G"] <- 3
+    input_array[[i]][input_array[[i]] == "U"] <- 4
+  }
+  sampling_output = data.frame(c(1:tmax))
+  
+  #Algorithm draft 3
+  o = rep(1, length(input_array)) #Creating vector for offset for each sequence
+  input_array_o = input_array 
+  P_c = list() #Creating list to collect P_c
+  PFM_M = data.frame(c(0, 0, 0, 0), row.names = c('A', 'C', 'G', 'U')) #Creating PFM
+  max_o = rep(1, length(input_array)) #Current best offsets to maximize P/Q
+  max_o_df = data.frame(max_o)
+  max_mjk = rep(0, length(input_array))
+  max_mjk_df = data.frame(rep(0, length(input_array)))
+  t=0
+  sampling_mjk = data.frame()
+  
+  for (i in 1:length(input)) {  #Creating vectors in P_c list to account for offsets
+    P_c[[i]] = rep(0, (nchar(input[i]) - 5))
+  } 
+  for (z in 1:tmax) {
+    #M-step
+    e = 0
+    input_array_o = input_array 
+    for (j in 1:length(input_array)) { #For each sequence
+      if (max_o[j] > 0) {
+        input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+      } else {
+        input_array_o[[j]] = c(0, 0, 0, 0, 0, 0)
+        e = e + 1
+      }
+    }
+    input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))  #Creating df with sequence for each input
+    for (j in 1:6) {
+      for (k in 1:4) {
+        PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+      }
+      PFM_M[is.na(PFM_M)] = 0
+      for (k in 1:nrow(PFM_M)) {
+        tmp = length(input_array) + 1 - e
+        PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+      }
+    } #E-step 
+    g_p = P_c
+    t = t + 1
+    o = rep(1, length(input_array)) 
+    for (j in 1:length(input_array)) { #for each sequence 
+      tmp = rep(0, ncol(PFM_M)) #Creating vector to collect Mjk value per base in 6mer
+      for (k in 1:(nchar(input[j])-5)) { #For each offset per sequence
+        input_array_o[[j]] = input_array[[j]][o[j]:(o[j] + 5)]
+        o[j] = o[j] + 1
+        for (l in 1:6) { #For each position
+          tmp1 = as.numeric(input_array_o[[j]][l]) #Collect base at k position
+          tmp[l] = PFM_M[tmp1,l] #obtaining PFM values for given sequence
+        }
+        P_c[[j]][k] = (prod(tmp)/(0.25^6)) #P/Q (r_pi)
+      }
+      for (k in 1:length(P_c[[j]])) {
+        cT = t/tmax
+        tmp2 = sum(P_c[[j]])^cT + 1^cT
+        g_p[[j]][k] = (P_c[[j]][k]^cT)/tmp2
+      }
+      g_p[[j]][(length(g_p[[j]]) + 1)] = 1/tmp2
+    }
+    sampling_o = list()
+    for (i in 1:length(input)) {  #Creating sampling list to obtain offset from given probabilities per sequence
+      sampling_o[[i]] = rep(0, (nchar(input[i]) - 5))
+      tmp3 = length(sampling_o[[i]])
+      sampling_o[[i]][1:tmp3] = c(1:tmp3)
+      sampling_o[[i]][(tmp3+1)] = 0
+    } 
+    for (i in 1:length(input_array)) {
+      sampling_output[z,i] = sample(sampling_o[[i]], size = 1, prob = g_p[[i]], replace = T)
+      colnames(sampling_output)[i] = paste('Seq', i)
+    }
+    max_o =  as.vector(as.numeric(sampling_output[z,]))
+    sampling_mjk[z,] = sampling_output[z,]
+    input_array_o = list()
+    #Counting best offset
+    for (j in 1:length(input_array)) { #For each sequence
+      if (sampling_output[z,j] > 0) {
+        input_array_o[[j]] = input_array[[j]][sampling_output[z,j]:(sampling_output[z,j] + 5)] #Obtain 6 length squence for given offset given by object o
+      }
+    }
+    input_array_df = data.frame(matrix(unlist(input_array_o), nrow = sum((sampling_output[z,]>0)), byrow = T))#Creating df with sequence for each input
+    for (j in 1:6) {
+      for (k in 1:4) {
+        PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+      }
+      PFM_M[is.na(PFM_M)] = 0
+      for (k in 1:nrow(PFM_M)) {
+        tmp5 = sum((sampling_output[z,]>0)) + 1
+        PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp5 #Converting count to frequnecy
+      }
+    }
+    input_array_o1 = lapply(input_array_o, function(x) as.numeric(x))
+    for (j in 1:ncol(sampling_output)) {
+      if (sampling_output[z,j] == 0) {
+        sampling_mjk[z,j] = 0
+      } else {
+        tmp = rep(0, ncol(PFM_M))
+        for (k in 1:6) {
+          tmp6 = input_array_o1[[j]][k]
+          tmp[k] = PFM_M[tmp6,k]
+        }
+        sampling_mjk[z,j] = log10(prod(tmp)/(0.25^6))
+      }
+    }
+    sampling_mjk[z,(length(input_array)+1)] = sum(sampling_mjk[z,1:length(input_array)])
+    
+  }
+  
+  
+  
+  
+  #Preparing results
+  max_o = as.numeric(as.vector(sampling_output[tmax,]))
+  for (j in 1:length(input_array)) { #For each sequence
+    input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+  }
+  input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+  for (j in 1:6) {
+    for (k in 1:4) {
+      PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+    }
+    PFM_M[is.na(PFM_M)] = 0
+    for (k in 1:nrow(PFM_M)) {
+      tmp = length(input_array) + 1
+      PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+    }
+  }
+  
+  colnames(PFM_M) = c('k=1', 'k=2', 'k=3', 'k=4', 'k=5','k=6')
+  #reporting results
+  print(PFM_M)
+  cat('Offsets:', max_o = as.numeric(as.vector(sampling_output[which.max(sampling_mjk[,ncol(sampling_mjk)]),])))
+  cat('\nLast EM:', 10^(sampling_mjk[nrow(sampling_mjk),ncol(sampling_mjk)]))
+  cat('\nLast log10(EM):', sampling_mjk[nrow(sampling_mjk),ncol(sampling_mjk)])
+}
+
+gibbszoops = function(input, tmax = 100) {
+  input = as.vector(as.character(input[,1]))
+  input_array = sapply(input, function(x) strsplit(x, ""), simplify = T)
+  options(warn=-1)
+  for (i in 1:length(input_array)){ #Creating j or numbers corresponding to each base
+    input_array[[i]][input_array[[i]] == "A"] <- 1
+    input_array[[i]][input_array[[i]] == "C"] <- 2
+    input_array[[i]][input_array[[i]] == "G"] <- 3
+    input_array[[i]][input_array[[i]] == "U"] <- 4
+  }
+  sampling_output = data.frame(c(1:tmax))
+  
+  #Algorithm draft 3
+  o = rep(1, length(input_array)) #Creating vector for offset for each sequence
+  input_array_o = input_array 
+  P_c = list() #Creating list to collect P_c
+  PFM_M = data.frame(c(0, 0, 0, 0), row.names = c('A', 'C', 'G', 'U')) #Creating PFM
+  max_o = rep(1, length(input_array)) #Current best offsets to maximize P/Q
+  max_o_df = data.frame(max_o)
+  max_mjk = rep(0, length(input_array))
+  max_mjk_df = data.frame(rep(0, length(input_array)))
+  t=0
+  sampling_mjk = data.frame()
+  
+  for (i in 1:length(input)) {  #Creating vectors in P_c list to account for offsets
+    P_c[[i]] = rep(0, (nchar(input[i]) - 5))
+  } 
+  for (z in 1:tmax) {
+    #M-step
+    e = 0
+    input_array_o = input_array 
+    for (j in 1:length(input_array)) { #For each sequence
+      if (max_o[j] > 0) {
+        input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+      } else {
+        input_array_o[[j]] = c(0, 0, 0, 0, 0, 0)
+        e = e + 1
+      }
+    }
+    input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))  #Creating df with sequence for each input
+    for (j in 1:6) {
+      for (k in 1:4) {
+        PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+      }
+      PFM_M[is.na(PFM_M)] = 0
+      for (k in 1:nrow(PFM_M)) {
+        tmp = length(input_array) + 1 - e
+        PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+      }
+    } #E-step 
+    g_p = P_c
+    t = t + 1
+    o = rep(1, length(input_array)) 
+    for (j in 1:length(input_array)) { #for each sequence 
+      tmp = rep(0, ncol(PFM_M)) #Creating vector to collect Mjk value per base in 6mer
+      for (k in 1:(nchar(input[j])-5)) { #For each offset per sequence
+        input_array_o[[j]] = input_array[[j]][o[j]:(o[j] + 5)]
+        o[j] = o[j] + 1
+        for (l in 1:6) { #For each position
+          tmp1 = as.numeric(input_array_o[[j]][l]) #Collect base at k position
+          tmp[l] = PFM_M[tmp1,l] #obtaining PFM values for given sequence
+        }
+        P_c[[j]][k] = (prod(tmp)/(0.25^6)) #P/Q (r_pi)
+      }
+      for (k in 1:length(P_c[[j]])) {
+        tmp2 = sum(P_c[[j]]) + 1
+        g_p[[j]][k] = P_c[[j]][k]/tmp2
+      }
+      g_p[[j]][(length(g_p[[j]]) + 1)] = 1/tmp2
+    }
+    sampling_o = list()
+    for (i in 1:length(input)) {  #Creating sampling list to obtain offset from given probabilities per sequence
+      sampling_o[[i]] = rep(0, (nchar(input[i]) - 5))
+      tmp3 = length(sampling_o[[i]])
+      sampling_o[[i]][1:tmp3] = c(1:tmp3)
+      sampling_o[[i]][(tmp3+1)] = 0
+    } 
+    for (i in 1:length(input_array)) {
+      sampling_output[z,i] = sample(sampling_o[[i]], size = 1, prob = g_p[[i]], replace = T)
+      colnames(sampling_output)[i] = paste('Seq', i)
+    }
+    max_o =  as.vector(as.numeric(sampling_output[z,]))
+    sampling_mjk[z,] = sampling_output[z,]
+    input_array_o = list()
+    #Counting best offset
+    for (j in 1:length(input_array)) { #For each sequence
+      if (sampling_output[z,j] > 0) {
+        input_array_o[[j]] = input_array[[j]][sampling_output[z,j]:(sampling_output[z,j] + 5)] #Obtain 6 length squence for given offset given by object o
+      }
+    }
+    input_array_df = data.frame(matrix(unlist(input_array_o), nrow = sum((sampling_output[z,]>0)), byrow = T))#Creating df with sequence for each input
+    for (j in 1:6) {
+      for (k in 1:4) {
+        PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+      }
+      PFM_M[is.na(PFM_M)] = 0
+      for (k in 1:nrow(PFM_M)) {
+        tmp5 = sum((sampling_output[z,]>0)) + 1
+        PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp5 #Converting count to frequnecy
+      }
+    }
+    input_array_o1 = lapply(input_array_o, function(x) as.numeric(x))
+    for (j in 1:ncol(sampling_output)) {
+      if (sampling_output[z,j] == 0) {
+        sampling_mjk[z,j] = 0
+      } else {
+        tmp = rep(0, ncol(PFM_M))
+        for (k in 1:6) {
+          tmp6 = input_array_o1[[j]][k]
+          tmp[k] = PFM_M[tmp6,k]
+        }
+        sampling_mjk[z,j] = log10(prod(tmp)/(0.25^6))
+      }
+    }
+    sampling_mjk[z,(length(input_array)+1)] = sum(sampling_mjk[z,1:length(input_array)])
+    
+  }
+  
+  
+  
+  
+  #Preparing results
+  max_o = as.numeric(as.vector(sampling_output[which.max(sampling_mjk[,ncol(sampling_mjk)]),]))
+  for (j in 1:length(input_array)) { #For each sequence
+    input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+  }
+  input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+  for (j in 1:6) {
+    for (k in 1:4) {
+      PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+    }
+    PFM_M[is.na(PFM_M)] = 0
+    for (k in 1:nrow(PFM_M)) {
+      tmp = length(input_array) + 1
+      PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+    }
+  }
+  
+  colnames(PFM_M) = c('k=1', 'k=2', 'k=3', 'k=4', 'k=5','k=6')
+  #reporting results
+  print(PFM_M)
+  cat('Offsets:', max_o = as.numeric(as.vector(sampling_output[which.max(sampling_mjk[,ncol(sampling_mjk)]),])))
+  cat('\nMax EM:', 10^(sampling_mjk[which.max(sampling_mjk[,ncol(sampling_mjk)]),ncol(sampling_mjk)]))
+  cat('\nMax log10(EM):', sampling_mjk[which.max(sampling_mjk[,ncol(sampling_mjk)]),ncol(sampling_mjk)])
+}
+
+hardzoops <- function(input) {
+  input = as.vector(as.character(input[,1]))
+  input_array = sapply(input, function(x) strsplit(x, ""), simplify = T)
+  for (i in 1:length(input_array)){ #Creating j or numbers corresponding to each base
+    input_array[[i]][input_array[[i]] == "A"] <- 1
+    input_array[[i]][input_array[[i]] == "C"] <- 2
+    input_array[[i]][input_array[[i]] == "G"] <- 3
+    input_array[[i]][input_array[[i]] == "U"] <- 4
+  }
+  
+  #Algorithm draft 3
+  options(warn=-1)
+  o = rep(1, length(input_array)) #Creating vector for offset for each sequence
+  input_array_o = input_array 
+  P_c = list() #Creating list to collect P_c
+  PFM_M = data.frame(c(0, 0, 0, 0), row.names = c('A', 'C', 'G', 'U')) #Creating PFM
+  max_o = rep(1, length(input_array)) #Current best offsets to maximize P/Q
+  max_o_df = data.frame(max_o)
+  max_mjk = rep(0, length(input_array))
+  max_mjk_df = data.frame(rep(0, length(input_array)))
+  
+  for (i in 1:length(input)) {  #Creating vectors in P_c list to account for offsets
+    P_c[[i]] = rep(0, (nchar(input[i]) - 5))
+  } #M-step
+  for (j in 1:length(input_array)) { #For each sequence
+    input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+  }
+  input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+  for (j in 1:6) {
+    for (k in 1:4) {
+      PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+    }
+    PFM_M[is.na(PFM_M)] = 0
+    for (k in 1:nrow(PFM_M)) {
+      tmp = length(input_array) + 1
+      PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+    }
+  } #E-step
+  for (j in 1:length(input_array)) { #for each sequence 
+    tmp = rep(0, ncol(PFM_M)) #Creating vector to collect Mjk value per base in 6mer
+    for (k in 1:(nchar(input[j])-5)) { #for each offset position per sequence
+      for (l in 1:6) {
+        tmp1 = as.numeric(input_array_o[[j]][l]) #Collect sequence
+        tmp[l] = PFM_M[tmp1,l]
+      }
+      P_c[[j]][k] = log10(prod(tmp)/(0.25^6))
+      o[j] = o[j] + 1
+      input_array_o[[j]] = input_array[[j]][o[j]:(o[j] + 5)] #Obtain 6 length squence for new offset from current PFM
+    }
+    if (max(P_c[[j]]) > 0) {
+      max_o[j] = which(P_c[[j]] == max(P_c[[j]]))[1]
+      max_mjk[j] = P_c[[j]][which(P_c[[j]] == max(P_c[[j]]))[1]]
+    } else {
+      max_o[j] = 0
+      max_mjk[j] = 0
+    }
+  }
+  max_o_df = cbind(max_o_df, data.frame(max_o))
+  max_mjk_df = cbind(max_mjk_df, data.frame(max_mjk))
+  
+  while(sum(max_mjk_df[,ncol(max_mjk_df)]) > sum(max_mjk_df[,(ncol(max_mjk_df))-1])) {
+    for (i in 1:length(input)) {  #Creating vectors in P_c list to account for offsets
+      P_c[[i]] = rep(0, (nchar(input[i]) - 5))
+      input_array_o = list()
+      PFM_M = data.frame(c(0, 0, 0, 0), row.names = c('A', 'C', 'G', 'U')) #Creating PFM
+      o = rep(1, length(input_array)) #Creating vector for offset for each sequence
+    } #M-step
+    e = 0
+    for (j in 1:length(input_array)) { #For each sequence
+      if (max_o[j] > 0) {
+        input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+      } else {
+        input_array_o[[j]] = c(0, 0, 0, 0, 0, 0)
+        e = e + 1
+      }
+    }
+    input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array_o), byrow = T))#Creating df with sequence for each input
+    for (j in 1:6) {
+      for (k in 1:4) {
+        PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+      }
+      PFM_M[is.na(PFM_M)] = 0
+      for (k in 1:nrow(PFM_M)) {
+        tmp = length(input_array_o) + 1 - e
+        PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+      }
+    } #E-step
+    for (j in 1:length(input_array)) { #for each sequence 
+      for (k in 1:(nchar(input[j])-5)) { #for each offset position per sequence
+        tmp = rep(0, ncol(PFM_M)) #Creating vector to collect Mjk value per base in 6mer
+        for (l in 1:6) {
+          input_array_o[[j]] = input_array[[j]][o[j]:(o[j] + 5)] #Obtain 6 length squence for new offset from current PFM
+          tmp1 = as.numeric(input_array_o[[j]][l]) #Collect sequence
+          tmp[l] = PFM_M[tmp1,l]
+        }
+        P_c[[j]][k] =  log10(prod(tmp)/(0.25^6))
+        o[j] = o[j] + 1
+      }
+      if (max(P_c[[j]]) > 0) {
+        max_o[j] = which(P_c[[j]] == max(P_c[[j]]))[1]
+        max_mjk[j] = P_c[[j]][which(P_c[[j]] == max(P_c[[j]]))[1]]
+      } else {
+        max_o[j] = 0
+        max_mjk[j] = 0
+      }
+    }
+    max_o_df = cbind(max_o_df, data.frame(max_o))
+    max_mjk_df = cbind(max_mjk_df, data.frame(max_mjk))
+  } #Reporting Best E(M,o)
+  max_o = as.vector(max_o_df[,(ncol(max_o_df)-1)])
+  for (j in 1:length(input_array)) { #For each sequence
+    input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+  }
+  input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+  for (j in 1:6) {
+    for (k in 1:4) {
+      PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+    }
+    PFM_M[is.na(PFM_M)] = 0
+    for (k in 1:nrow(PFM_M)) {
+      tmp = length(input_array) + 1
+      PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+    }
+  }
+  options(warn=0)
+  #Preparing results reporting
+  colnames(PFM_M) = c('k=1', 'k=2', 'k=3', 'k=4', 'k=5','k=6')
+  max_em_log = sum(max_mjk_df[,(ncol(max_mjk_df)-1)]) #Output
+  max_em = 10^max_em_log
+  
+  #Reporting Results
+  print(PFM_M)
+  cat("\nOffsets:", max_o)
+  cat("\nMax EM:", max_em)
+  cat("\nMax log10(EM):", max_em_log)  
+}
+
+hardoops <- function(input) {
+  input = as.vector(as.character(input[,1]))
+  input_array = sapply(input, function(x) strsplit(x, ""), simplify = T)
+  for (i in 1:length(input_array)){ #Creating j or numbers corresponding to each base
+    input_array[[i]][input_array[[i]] == "A"] <- 1
+    input_array[[i]][input_array[[i]] == "C"] <- 2
+    input_array[[i]][input_array[[i]] == "G"] <- 3
+    input_array[[i]][input_array[[i]] == "U"] <- 4
+  }
+  
+  #Algorithm draft 3
+  options(warn=-1)
+  o = rep(1, length(input_array)) #Creating vector for offset for each sequence
+  input_array_o = input_array 
+  P_c = list() #Creating list to collect P_c
+  PFM_M = data.frame(c(0, 0, 0, 0), row.names = c('A', 'C', 'G', 'U')) #Creating PFM
+  max_o = rep(1, length(input_array)) #Current best offsets to maximize P/Q
+  max_o_df = data.frame(max_o)
+  max_mjk = rep(0, length(input_array))
+  max_mjk_df = data.frame(rep(0, length(input_array)))
+  
+  for (i in 1:length(input)) {  #Creating vectors in P_c list to account for offsets
+    P_c[[i]] = rep(0, (nchar(input[i]) - 5))
+  } #M-step
+  for (j in 1:length(input_array)) { #For each sequence
+    input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+  }
+  input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+  for (j in 1:6) {
+    for (k in 1:4) {
+      PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+    }
+    PFM_M[is.na(PFM_M)] = 0
+    for (k in 1:nrow(PFM_M)) {
+      tmp = length(input_array) + 1
+      PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+    }
+  } #E-step
+  for (j in 1:length(input_array)) { #for each sequence 
+    tmp = rep(0, ncol(PFM_M)) #Creating vector to collect Mjk value per base in 6mer
+    for (k in 1:(nchar(input[j])-5)) { #for each offset position per sequence
+      for (l in 1:6) {
+        tmp1 = as.numeric(input_array_o[[j]][l]) #Collect sequence
+        tmp[l] = PFM_M[tmp1,l]
+      }
+      P_c[[j]][k] = log10(prod(tmp)/(0.25^6))
+      o[j] = o[j] + 1
+      input_array_o[[j]] = input_array[[j]][o[j]:(o[j] + 5)] #Obtain 6 length squence for new offset from current PFM
+    }
+    max_o[j] = which(P_c[[j]] == max(P_c[[j]]))[1]
+    max_mjk[j] = P_c[[j]][which(P_c[[j]] == max(P_c[[j]]))[1]]
+  }
+  max_o_df = cbind(max_o_df, data.frame(max_o))
+  max_mjk_df = cbind(max_mjk_df, data.frame(max_mjk))
+  
+  while(sum(max_mjk_df[,ncol(max_mjk_df)]) > sum(max_mjk_df[,(ncol(max_mjk_df))-1])) {
+    for (i in 1:length(input)) {  #Creating vectors in P_c list to account for offsets
+      P_c[[i]] = rep(0, (nchar(input[i]) - 5))
+      input_array_o = list()
+      PFM_M = data.frame(c(0, 0, 0, 0), row.names = c('A', 'C', 'G', 'U')) #Creating PFM
+      o = rep(1, length(input_array)) #Creating vector for offset for each sequence
+    } #M-step
+    for (j in 1:length(input_array)) { #For each sequence
+      input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+    }
+    input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+    for (j in 1:6) {
+      for (k in 1:4) {
+        PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+      }
+      PFM_M[is.na(PFM_M)] = 0
+      for (k in 1:nrow(PFM_M)) {
+        tmp = length(input_array) + 1
+        PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+      }
+    } #E-step
+    for (j in 1:length(input_array)) { #for each sequence 
+      for (k in 1:(nchar(input[j])-5)) { #for each offset position per sequence
+        tmp = rep(0, ncol(PFM_M)) #Creating vector to collect Mjk value per base in 6mer
+        for (l in 1:6) {
+          input_array_o[[j]] = input_array[[j]][o[j]:(o[j] + 5)] #Obtain 6 length squence for new offset from current PFM
+          tmp1 = as.numeric(input_array_o[[j]][l]) #Collect sequence
+          tmp[l] = PFM_M[tmp1,l]
+        }
+        P_c[[j]][k] =  log10(prod(tmp)/(0.25^6))
+        o[j] = o[j] + 1
+      }
+      max_o[j] = which(P_c[[j]] == max(P_c[[j]]))[1]
+      max_mjk[j] = P_c[[j]][which(P_c[[j]] == max(P_c[[j]]))[1]]
+    }
+    max_o_df = cbind(max_o_df, data.frame(max_o))
+    max_mjk_df = cbind(max_mjk_df, data.frame(max_mjk))
+  } #Reporting Best E(M,o)
+  max_o = as.vector(max_o_df[,(ncol(max_o_df)-1)])
+  for (j in 1:length(input_array)) { #For each sequence
+    input_array_o[[j]] = input_array[[j]][max_o[j]:(max_o[j] + 5)] #Obtain 6 length squence for given offset given by object o
+  }
+  input_array_df = data.frame(matrix(unlist(input_array_o), nrow = length(input_array), byrow = T))#Creating df with sequence for each input
+  for (j in 1:6) {
+    for (k in 1:4) {
+      PFM_M[k,j] = sum(input_array_df[,j] == k) #Count of each base
+    }
+    PFM_M[is.na(PFM_M)] = 0
+    for (k in 1:nrow(PFM_M)) {
+      tmp = length(input_array) + 1
+      PFM_M[k,j] = (PFM_M[k,j] + 0.25) / tmp #Converting count to frequnecy
+    }
+  }
+  options(warn=0)
+  #Preparing results reporting
+  colnames(PFM_M) = c('k=1', 'k=2', 'k=3', 'k=4', 'k=5','k=6')
+  max_em_log = sum(max_mjk_df[,(ncol(max_mjk_df)-1)]) #Output
+  max_em = 10^max_em_log
+  
+  #Reporting Results
+  print(PFM_M)
+  cat("\nOffsets:", max_o)
+  cat("\nMax EM:", max_em)
+  cat("\nMax log10(EM):", max_em_log)  
+}
