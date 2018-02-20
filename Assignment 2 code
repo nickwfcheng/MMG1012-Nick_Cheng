@@ -1,4 +1,4 @@
-annealzoops = function(x, tmax = 1000) {
+annealzoops = function(input, tmax = 1000) {
   input = as.vector(as.character(input[,1]))
   input_array = sapply(input, function(x) strsplit(x, ""), simplify = T)
   options(warn=-1)
