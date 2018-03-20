@@ -1,7 +1,5 @@
-###R###
-library(dplyr)
-
-#Choosing random snps - Bash
+##In Bash
+#Choosing random snps 
 for i in *.gz; do gunzip -cd $i | awk '{ print $1 }' > $i.snplist.txt; done
 
 #Extracting snp list to count number of common snps
@@ -9,7 +7,7 @@ cp ASW.hmap.gz.snplist.txt common_snps.tsv
 for i in *.txt; do grep -Fxf $i common_snps.tsv > common_snps.tsv; done
 wc -l common_snps.tsv
 
-#Choosing random snps - R
+##in R
 #Sampling random snps
 select_vector = c(1:24625) #There are 24625 common snps across the 6 subpopulations
 sampling = sample(x = select_vector, size = 5000, replace = F)
@@ -27,7 +25,7 @@ snp_list3 = paste(snp_list3, sep = '|', collapse = '|')
 snp_list4 = paste(snp_list4, sep = '|', collapse = '|')
 snp_list5 = paste(snp_list5, sep = '|', collapse = '|')
 
-
+##In Bash
 #Choosing list of snps - Bash, the output from snp_list is used as input for grep command
 for i in *.gz; do gunzip -c $i | grep -E -w '' > "$i.filt1.txt"; done
 for i in *.gz; do gunzip -c $i | grep -E -w '' > "$i.filt2.txt"; done
@@ -36,6 +34,7 @@ for i in *.gz; do gunzip -c $i | grep -E -w '' > "$i.filt4.txt"; done
 for i in *.gz; do gunzip -c $i | grep -E -w '' > "$i.filt5.txt"; done
 for i in *.gz; do gunzip -c $i | grep -E -w "rs683 | rs910" >"$i.filt6.txt"; done
 
+##In R
 #Importing files
 hmap_files1 = list.files(pattern = "*1.txt") #Importing filenames
 hmap_files2 = list.files(pattern = "*2.txt")
