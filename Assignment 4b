@@ -1,0 +1,111 @@
+library(keras)
+DMS_factor = read.csv('DMS_summary_factor.csv', header = T)
+DMS_onehot = read.csv('DMS_summary_onehot.csv', header = T)
+DMS_factor = DMS_factor[,-c(5,6)]
+DMS_onehot = DMS_onehot[,-c(43,44)]
+###Part A###
+model_performance = data.frame(matrix(ncol = 3, nrow = length(table(DMS_factor[,1]))))
+model_performance[,1] = data.frame(table(DMS_factor[,1]))[,1]
+colnames(model_performance) = c('test_protein', 'r', 'r2')
+
+
+for (i in 1:length(table(DMS_factor[,1]))) {
+  model <- keras_model_sequential() 
+  model %>% 
+    layer_dense(units = 50, activation = 'relu', input_shape = c(40)) %>% 
+    layer_dropout(rate = 0.2)%>%
+    layer_dense(units = 50, activation = 'relu') %>% 
+    layer_dense(units=1, 'sigmoid')
+
+  model %>% compile(
+    optimizer = optimizer_adam(),
+    loss = 'binary_crossentropy',
+    metric = c('accuracy')
+  )
+#Calculating square means  
+  R2_keras <- function(y_true, y_pred) {
+    SS_res =  k_sum(k_square(y_true - y_pred)) 
+    SS_tot = k_sum(k_square(y_true - k_mean(y_true))) 
+    return (1 - SS_res/(SS_tot + k_epsilon()))
+  }
+  
+  #Training
+  model %>% fit(
+    as.matrix(DMS_onehot[which(DMS_onehot[,1] != as.character(model_performance[i,1])),][,-c(1,2)]), DMS_onehot[which(DMS_onehot[,1] !=  as.character(model_performance[i,1])),][,2], epochs=25, batch_size=64)
+  
+  #Testing
+  prediction = model %>% predict_on_batch(as.matrix(DMS_onehot[which(DMS_onehot[,1] ==  as.character(model_performance[i,1])),][,-c(1,2)]))
+  model_performance[i,2] = cor(DMS_onehot[which(DMS_onehot[,1] ==  as.character(model_performance[i,1])),][,2], prediction)
+  model_performance[i,3] = (model_performance[i,2])^2
+}
+
+###Part B###
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 50, activation = 'relu', input_shape = c(40)) %>% 
+  layer_dropout(rate = 0.2)%>%
+  layer_dense(units = 50, activation = 'relu') %>% 
+  layer_dense(units=1, 'sigmoid')
+
+model %>% compile(
+  optimizer = optimizer_adam(),
+  loss = 'binary_crossentropy',
+  metric = c('accuracy')
+)
+#Calculating square means  
+R2_keras <- function(y_true, y_pred) {
+  SS_res =  k_sum(k_square(y_true - y_pred)) 
+  SS_tot = k_sum(k_square(y_true - k_mean(y_true))) 
+  return (1 - SS_res/(SS_tot + k_epsilon()))
+}
+
+#Training
+model %>% fit(
+  as.matrix(DMS_onehot[,-c(1,2)]), DMS_onehot[,2], epochs=25, batch_size=64)
+
+#Generating AA matrix
+AA_onehot = matrix(nrow = 400, ncol = 40)
+colnames(AA_onehot) = colnames(DMS_onehot[,-c(1,2)])
+tmp = seq(1,400, 20)
+j = 0
+for (i in 1:20) {
+  AA_onehot[c(tmp[i]:(tmp[i] + 19)),i] <- 1
+  AA_onehot[(tmp+j),(i+20)] <- 1
+  j = j+1
+}
+AA_onehot[is.na(AA_onehot)] <- 0 
+
+#Testing model on matrix
+AA_prediction = model %>% predict_on_batch(AA_onehot)
+AA_prediction_matrix = matrix(AA_prediction, ncol = 20, nrow = 20)
+colnames(AA_prediction_matrix) = gsub('mut.aa_is_', '', colnames(AA_onehot)[1:20])
+rownames(AA_prediction_matrix) = gsub('wt.aa_is_', '', colnames(AA_onehot)[21:40])
+library(pheatmap)
+pheatmap(AA_prediction_matrix,  cluster_rows = F, cluster_cols = F)
+
+#provean/blosum comparison
+library(reshape2)
+AA_prediction_melt = melt(AA_prediction_matrix)
+colnames(AA_prediction_melt) = c('wt.aa', 'mut.aa', 'DMS_predict')
+DMS_factor_filt = read.csv('DMS_summary_factor.csv', header = T)
+library(plyr)
+DMS_factor_filt = ddply(DMS_factor_filt[,-c(1,2)], c('mut.aa', 'wt.aa'), numcolwise(mean))
+DMS_factor_filt = merge(DMS_factor_filt, AA_prediction_melt, by =c('wt.aa', 'mut.aa'))
+cor(DMS_factor_filt$provean, DMS_factor_filt$DMS_predict)^2
+cor(DMS_factor_filt$blosum, DMS_factor_filt$DMS_predict)^2
+
+
+###Part C###
+lm_model_performance = data.frame(matrix(ncol = 3, nrow = length(table(DMS_factor[,1]))))
+lm_model_performance[,1] = data.frame(table(DMS_factor[,1]))[,1]
+colnames(lm_model_performance) = c('test_protein', 'r', 'r2')
+
+for (i in 1:length(table(DMS_factor[,1]))) {
+  DMS_factor_train = DMS_factor[which(DMS_factor[,1] != data.frame(table(DMS_factor[,1]))[i,1]),]
+  DMS_factor_test = DMS_factor[which(DMS_factor[,1] == data.frame(table(DMS_factor[,1]))[i,1]),]
+  model = lm(DMS_score ~ mut.aa*wt.aa, DMS_factor_train)
+  prediction = predict(model, DMS_factor_test)
+  cor = cor(DMS_factor_test[,2], prediction)
+  lm_model_performance[i,2] = cor
+  lm_model_performance[i,3] = cor^2
+}
